@@ -1,0 +1,37 @@
+all: readmbr.com writembr.com upmbr.exe
+
+readmbr.com: readmbr.obj error.obj
+	tlink /t c0t.obj readmbr.obj error.obj,readmbr.com,readmbr.map,cs.lib
+
+writembr.com: writembr.obj confirm.obj error.obj
+	tlink /t c0t.obj writembr.obj confirm.obj error.obj,writembr.com,writembr.map,cs.lib
+
+upmbr.exe: upmbr.obj confirm.obj error.obj
+	tlink c0t.obj upmbr.obj confirm.obj error.obj,upmbr.exe,upmbr.map,cs.lib
+
+readmbr.obj: readmbr.c error.h
+	bcc -P -mt -oreadmbr.obj -c readmbr.c
+
+writembr.obj: writembr.c confirm.h error.h
+	bcc -P -mt -owritembr.obj -c writembr.c
+
+upmbr.obj: upmbr.c partentry.h confirm.h error.h
+	bcc -P -ms -oupmbr.obj -c upmbr.c
+
+confirm.obj: confirm.c confirm.h
+	bcc -P -mt -oconfirm.obj -c confirm.c
+
+error.obj: error.c error.h
+	bcc -P -mt -oerror.obj -c error.c
+
+clean:
+	del readmbr.com
+	del writembr.com
+	del upmbr.exe
+	del *.map
+	del *.obj
+
+install: readmbr.com writembr.com upmbr.exe
+	copy readmbr.com C:\TOOLS
+	copy writembr.com C:\TOOLS
+	copy upmbr.exe C:\TOOLS

@@ -1,0 +1,35 @@
+all: stage1.bin stage15.bin
+
+stage1.bin: stage1.exe
+        exe2bin stage1.exe stage1.bin
+
+stage1.exe: stage1.obj
+        tlink stage1.obj,stage1.exe,stage1.map
+
+stage1.obj: stage1.asm
+        tasm /q /t stage1.asm
+
+stage15.bin: stage15.com
+        del stage15.bin
+        copy stage15.com stage15.bin
+
+stage15.com: stage15.obj biosvid.obj
+        tlink /t c0t.obj biosvid.obj stage15.obj,stage15.com,stage15.map,cs.lib maths.lib emu.lib
+
+stage15.obj: stage15.c
+        bcc -P -Os -mt -ostage15.obj -c stage15.c
+
+biosvid.obj: biosvid.c biosvid.h
+        bcc -P -Os -mt -obiosvid.obj -c biosvid.c
+
+clean:
+        del stage1.bin
+        del stage15.bin
+        del stage1.exe
+        del stage15.com
+	del stage15.exe
+        del *.map
+        del *.obj
+
+install: stage1.bin stage15.bin
+        upmbr 129 stage1.bin stage15.bin
