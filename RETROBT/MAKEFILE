@@ -30,6 +30,7 @@ clean:
 	del stage15.exe
         del *.map
         del *.obj
+	del *.bak
 
 install: stage1.bin stage15.bin
         upmbr 129 stage1.bin stage15.bin

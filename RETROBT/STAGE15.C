@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <bios.h>
+#include <stdarg.h>
 
 #define MAXDISK 8
 #define MAXOPTION 16
@@ -23,6 +24,8 @@ struct fsinfo {
   unsigned long serialNumber;
   char label[12];
   char FSType[9];
+  unsigned char fsSPT;
+  unsigned char fsHeads;
 };
 
 struct bootoption {
@@ -80,6 +83,7 @@ void printBootOption(const struct bootoption *b, const unsigned char s = 0);
 void useBootOption(const struct bootoption *b);
 char *strip(char *str);
 void print(const char *str, const unsigned char a = 0);
+void bprintf(const char *fmt, ...);
 void halt(void);
 void boot(
   const unsigned char  drive,
@@ -93,7 +97,12 @@ struct bootoption options[MAXOPTION];
 
 int main(int /*argc*/, char ** /*argv*/)
 {
-  print("ok\r\n\r\n");
+#if defined(DEBUG)
+  print("debug");
+#else
+  print("ok");
+#endif
+  print("\r\n\n");
 
   unsigned char row, col;
   biosgetpos(0, &row, &col);
@@ -112,6 +121,9 @@ int main(int /*argc*/, char ** /*argv*/)
       break;
     case 0x5000:
       ++s;
+      break;
+    case 0x011b:
+      abort();
       break;
     case 0x1c0d:
     case 0xe00d:
@@ -215,6 +227,16 @@ void print(const char *str, const unsigned char a)
     attr = a;
   biosputs(page, row, col, attr, strlen(str), str);
 };
+
+void bprintf(const char *fmt, ...)
+{
+  char stringBuffer[256];
+  va_list argptr;
+  va_start(argptr, fmt);
+  vsprintf(stringBuffer, fmt, argptr);
+  va_end(argptr);
+  print(stringBuffer);
+}
 
 /****************************************************************************
 *
@@ -325,6 +347,7 @@ int loadPartitions(
 
   // Analyzing partition table
   for (int i = 0; i < 4; ++i)
+  {
     switch (p->partition[i].type)
     {
     // Do nothing on empty record
@@ -343,9 +366,22 @@ int loadPartitions(
       break;
     // Copy partition table records
     default:
+#ifdef DEBUG
+      bprintf("%i %i 0x%02x %i/%i/%i %i/%i/%i\r\n",
+        n,
+        i,
+        p->partition[i].type,
+        p->partition[i].startchs.head,
+        p->partition[i].startchs.getCyl(),
+        p->partition[i].startchs.sec,
+        p->partition[i].endchs.head,
+        p->partition[i].endchs.getCyl(),
+        p->partition[i].endchs.sec
+      );
+#endif
       memcpy(&table[n++], &p[i], sizeof(struct partentry));
     }
-
+  }
   // Fill last element with zeroes
   memset(&table[n], 0, sizeof(struct partentry));
   return n;
@@ -377,6 +413,8 @@ struct fsinfo *loadFSInfo(
   memcpy(&fsinfo->serialNumber, sectorBuf + 0x27, 4);
   memcpy(&fsinfo->label,        sectorBuf + 0x2B, 11);
   memcpy(&fsinfo->FSType,       sectorBuf + 0x36, 8);
+  fsinfo->fsSPT   = *(unsigned short *)(sectorBuf + 0x18);
+  fsinfo->fsHeads = *(unsigned short *)(sectorBuf + 0x1A);
   return fsinfo;
 }
 
@@ -403,36 +441,9 @@ char *strip(char *str)
 void halt(void)
 {
   asm {
-    cli
-    hlt
+    int 0x18
   }
 }
-
-/****************************************************************************
-*
-* Prints partition letter and size
-*
-****************************************************************************/
-/*
-void printPartition(
-  const char letter,
-  const unsigned char drive
-  const struct partentry *partition,
-  const struct fsinfo *fsinfo
-)
-{
-  char stringBuf[40];
-  sprintf(
-    stringBuf,
-    "  %c: %-11s %s %uMB\r\n",
-    letter,
-    strip((char *)fsinfo->label),
-    strip((char *)fsinfo->FSType),
-    (unsigned)(partition->sizelba / 2000)
-  );
-  print(stringBuf);
-}
-*/
 
 void boot(
   const unsigned char  drive,
@@ -441,19 +452,30 @@ void boot(
   const unsigned char  sector
 )
 {
+#ifdef DEBUG
+  bprintf("D/H/C/S: %i/%i/%i/%i\r\n",
+    drive,
+    head,
+    track,
+    sector
+  );
+#endif
+
   unsigned char e;
   asm {
     mov BX, 0x6800
-    mov DL, drive
-    mov DH, head
-    mov AX, track
+    push BX
+    mov AH, 0x02
+    mov DX, track
     mov CL, 6
-    rol AH, CL
-    mov CX, AX
-    mov AL, sector
-    and AL, 0x3F
-    or  CL, AL
-    mov AX, 0x0201
+    shl DH, CL
+    or DH, sector
+    mov CX, DX
+    xchg CH, CL
+    xor DX, DX
+    mov DL, drive
+    push DX
+    mov DH, head
     int 0x13
     jc Error
     xor AX, AX
@@ -467,6 +489,26 @@ Error:
     halt();
   }
   asm {
+    pop DX
+    pop BX
+
+    // Hack jump instruction +0x0A to -0x02
+    // To hang system instead of falling
+    // to Non-system disk or disk error
+    //
+    // mov CL, 0xFE
+    // mov [BX+0xE2], CL
+
+//    mov [BX+0x24], DL	// Hacking physical drive number
+    mov AX, 0xAA55
+    cmp [BX+0x01FE], AL
+    jne NoSignature
     jmp BX
   }
+NoJump:
+  print("No JMP instruction");
+  halt();
+NoSignature:
+  print("Wrong signature");
+  halt();
 }
