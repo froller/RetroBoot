@@ -1,5 +1,5 @@
-#ifndef __PARTENTR_H
-#define __PARTENTR_H
+#ifndef __PARTTABL_H
+#define __PARTTABL_H
 
 #define PRTTBL_OFFSET 0x01BE
 #define PRTTBL_SIZE sizeof(partentry) * 4
@@ -22,6 +22,8 @@ struct partchs
   }
 };
 
+#pragma pack(push)
+#pragma pack(1)
 struct partentry
 {
   unsigned char active;
@@ -37,5 +39,6 @@ struct parttable
   struct partentry partition[4];
   unsigned short signature;
 };
+#pragma pack(pop)
 
 #endif

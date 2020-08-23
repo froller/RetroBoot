@@ -1,8 +1,6 @@
 #include "biosvid.h"
 
-void		_Cdecl biossetmode(
-			unsigned char mode
-		)
+void _Cdecl biossetmode(const unsigned char mode)
 {
   asm {
     mov AH, _VIDEO_SETMODE
@@ -11,11 +9,11 @@ void		_Cdecl biossetmode(
   }
 }
 
-void		_Cdecl biosgetmode(
-			unsigned char *mode,
-                        unsigned char *maxcol,
-                        unsigned char *page
-		)
+void _Cdecl biosgetmode(
+  unsigned char *mode,
+  unsigned char *maxcol,
+  unsigned char *page
+  )
 {
   unsigned char m, c, p;
   asm {
@@ -33,11 +31,11 @@ void		_Cdecl biosgetmode(
     *page = p;
 }
 
-void		_Cdecl biossetpos(
-                        unsigned char  pg,
-			unsigned char  row,
-                        unsigned char  col
-		)
+void _Cdecl biossetpos(
+  const unsigned char  pg,
+  const unsigned char  row,
+  const unsigned char  col
+  )
 {
   asm {
     mov DH, row
@@ -48,11 +46,11 @@ void		_Cdecl biossetpos(
   }
 }
 
-void		_Cdecl biosgetpos(
-			unsigned char  pg,
-                        unsigned char *row,
-                        unsigned char *col
-		)
+void _Cdecl biosgetpos(
+  const unsigned char pg,
+  unsigned char *row,
+  unsigned char *col
+  )
 {
   unsigned char r, c;
   asm {
@@ -69,9 +67,7 @@ void		_Cdecl biosgetpos(
 
 }
 
-void		_Cdecl biospage(
-			unsigned char  pg
-		)
+void _Cdecl biospage(const unsigned char pg)
 {
   asm {
     mov BH, pg
@@ -80,11 +76,11 @@ void		_Cdecl biospage(
   }
 }
 
-void		_Cdecl biosgetcha(
-			unsigned char	pg,
-			unsigned char  *attr,
-                        unsigned char  *ch
-		)
+void _Cdecl biosgetcha(
+  const unsigned char pg,
+  unsigned char *attr,
+  unsigned char *ch
+  )
 {
   unsigned char a, c;
   asm {
@@ -100,11 +96,11 @@ void		_Cdecl biosgetcha(
     *ch = c;
 }
 
-void		_Cdecl biosputch(
-			unsigned char  	pg,
-                        unsigned short	n,
-                        char	  	c
-		)
+void _Cdecl biosputch(
+  const unsigned char pg,
+  const unsigned short n,
+  const char c
+  )
 {
   asm {
     mov CX, n
@@ -115,12 +111,12 @@ void		_Cdecl biosputch(
   }
 }
 
-void		_Cdecl biosputcha(
-			unsigned char  	pg,
-                        unsigned char  	attr,
-                        unsigned short 	n,
-                        char	  	c
-		)
+void _Cdecl biosputcha(
+  const unsigned char pg,
+  const unsigned char attr,
+  const unsigned short n,
+  const char c
+  )
 {
   asm {
     mov CX, n
@@ -132,9 +128,7 @@ void		_Cdecl biosputcha(
   }
 }
 
-void		_Cdecl biosputchar(
-                        char	  	c
-		)
+void _Cdecl biosputchar(const char c)
 {
   asm {
     mov AL, c
@@ -144,12 +138,12 @@ void		_Cdecl biosputchar(
 }
 
 void _Cdecl biosputs(
-	unsigned char  pg,
-        unsigned char  row,
-        unsigned char  col,
-        unsigned char  attr,
-        unsigned short len,
-	const char    *s
+	const unsigned char  pg,
+        const unsigned char  row,
+        const unsigned char  col,
+        const unsigned char  attr,
+        const unsigned short len,
+	const char *s
 )
 {
   asm {
@@ -166,4 +160,3 @@ void _Cdecl biosputs(
     pop BP
   }
 }
-

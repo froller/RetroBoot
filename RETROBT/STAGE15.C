@@ -1,10 +1,10 @@
-#include "biosvid.h"
-#include "parttabl.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <bios.h>
-#include <stdarg.h>
+#include "biosvid.h"
+#include "bprintf.h"
+#include "parttabl.h"
 
 #define MAXDISK 8
 #define MAXOPTION 16
@@ -19,14 +19,17 @@ struct disk {
   struct partentry *partitions;
 };
 
+#pragma pack(push)
+#pragma pack(1)
 struct fsinfo {
   char OEMID[9];
   unsigned long serialNumber;
   char label[12];
   char FSType[9];
-  unsigned char fsSPT;
-  unsigned char fsHeads;
+//  unsigned char fsSPT;
+//  unsigned char fsHeads;
 };
+#pragma pack(pop)
 
 struct bootoption {
   unsigned char drive;
@@ -39,7 +42,7 @@ char const *diskerrormessage[] = {
 /* 0x00 */ "No error",
 /* 0x01 */ "Bad command",
 /* 0x02 */ "Address mark not found",
-/* 0x03 */ "Attempt to write to write-protected disk",
+/* 0x03 */ "Disk is write-protected",
 /* 0x04 */ "Sector not found",
 /* 0x05 */ "Reset failed",
 /* 0x06 */ "Disk changed since last operation",
@@ -60,6 +63,10 @@ char const *diskerrormessage[] = {
 /* 0xE0 */ "Status error",
 /* 0xFF */ "Sense operation failed"
 };
+
+#if defined(DEBUG)
+void dumpPartitionTable(struct partentry table[4]);
+#endif
 
 int diskGetConfig(unsigned char drive, struct disk *config);
 struct disk *findDisks();
@@ -82,8 +89,6 @@ void showBootOptions(const struct bootoption *b, const unsigned char s = 0);
 void printBootOption(const struct bootoption *b, const unsigned char s = 0);
 void useBootOption(const struct bootoption *b);
 char *strip(char *str);
-void print(const char *str, const unsigned char a = 0);
-void bprintf(const char *fmt, ...);
 void halt(void);
 void boot(
   const unsigned char  drive,
@@ -98,11 +103,11 @@ struct bootoption options[MAXOPTION];
 int main(int /*argc*/, char ** /*argv*/)
 {
 #if defined(DEBUG)
-  print("debug");
+  bprint("debug");
 #else
-  print("ok");
+  bprint("ok");
 #endif
-  print("\r\n\n");
+  bprint("\r\n\n");
 
   unsigned char row, col;
   biosgetpos(0, &row, &col);
@@ -122,9 +127,11 @@ int main(int /*argc*/, char ** /*argv*/)
     case 0x5000:
       ++s;
       break;
+#if defined(DEBUG)
     case 0x011b:
       abort();
       break;
+#endif
     case 0x1c0d:
     case 0xe00d:
       useBootOption(&options[s]);
@@ -137,26 +144,45 @@ int main(int /*argc*/, char ** /*argv*/)
   };
 }
 
+/****************************************************************************
+*
+* Displays boot option selector
+*
+****************************************************************************/
+
 void showBootOptions(const struct bootoption *b, const unsigned char s)
 {
   for (int i = 0; i < MAXOPTION && b[i].letter; ++i)
     printBootOption(&b[i], s == i);
 }
 
+/****************************************************************************
+*
+* Prints single boot option to screen
+*
+****************************************************************************/
+
 void printBootOption(const struct bootoption *b, const unsigned char s)
 {
-  char stringBuf[80];
-  sprintf(stringBuf, "  %c: %-11s (HDD%u, %s, %lu MB)",
+  int bytes; // Length of printed boot option
+  unsigned char attr = s ? 0x70 : 0x0F;	// Choose attribute
+  bytes = bprintaf("  %c: %-11s (HDD%u, %s, %lu MB)", attr,
     b->letter, b->fs->label,
     b->drive & 0x7F, strip(b->fs->FSType), b->partition->sizelba / 2000
   );
-  unsigned char attr = s ? 0x70 : 0x0F;
-  print(stringBuf, attr);
-  for (int i = strlen(stringBuf); i < 40; ++i)
-    print(" ", attr);
-  for (i = 0; i < 40; ++i)
-    print(" ", 0x07);
+  // Spaces hightlighted
+  for (int i = bytes; i < 48; ++i)
+    bprinta(" ", attr);
+  // Spaces to the end of line
+  for (; i < 80; ++i)
+    bprinta(" ", 0x07);
 }
+
+/****************************************************************************
+*
+* Just wrapper around boot() to minimize number of arguments
+*
+****************************************************************************/
 
 void useBootOption(const struct bootoption *b)
 {
@@ -168,74 +194,72 @@ void useBootOption(const struct bootoption *b)
   );
 }
 
+/****************************************************************************
+*
+* Analyzes disks and creates set of boot options
+*
+****************************************************************************/
+
 void loadBootOptions(struct bootoption *b)
 {
   struct disk *disks = findDisks();
   char letter = 'C';
   char oi = 0;
 
+  // Cycle through found physical disks
+  // to enumerate first partitions of each one
   for (int d = 0; disks[d].drvtype; ++d)
   {
+    // Load partition table
     disks[d].partitions
       = (struct partentry *)malloc(sizeof(struct partentry) * 16);
     loadPartitions(disks[d].partitions, disks[d].id, 0, 0, 1, 0);
+#if defined(DEBUG) && 0
+    bprintf("Partitios on drive %d\r\n", disks[d].id);
+    dumpPartitionTable(disks[d].partitions);
+#endif
+
+    // Load filesystem info of 1st partition
     struct fsinfo *fsinfo = loadFSInfo(
       disks[d].id,
       disks[d].partitions[0].startchs.head,
       disks[d].partitions[0].startchs.getCyl(),
       disks[d].partitions[0].startchs.sec
     );
+
+    // Fill boot option for 1st partition
+    // DOS enumerates first partitions of all available
+    // physical disks at first
+    // Then other partitions in order of appearance
     b[oi].drive  = disks[d].id;
     b[oi].letter = letter++;
     b[oi].partition = &disks[d].partitions[0];
     b[oi].fs = fsinfo;
     oi++;
   }
+  // Cycle through found physical disks again
+  // to enumerate rest partitions
   for (d = 0; disks[d].drvtype; ++d)
+    // Cycle through partitions starting from 2nd
     for (int i = 1; disks[d].partitions[i].type; ++i)
-      if (disks[d].partitions[i].type)
-      {
-        struct fsinfo *fsinfo = loadFSInfo(
-          disks[d].id,
-          disks[d].partitions[i].startchs.head,
-          disks[d].partitions[i].startchs.getCyl(),
-          disks[d].partitions[i].startchs.sec
-        );
-        b[oi].drive  = disks[d].id;
-        b[oi].letter = letter++;
-        b[oi].partition = &disks[d].partitions[i];
-        b[oi].fs = fsinfo;
-        oi++;
-      }
-  if (oi < 16)
+    {
+      // Load filesystem info of i-th partition
+      struct fsinfo *fsinfo = loadFSInfo(
+        disks[d].id,
+        disks[d].partitions[i].startchs.head,
+        disks[d].partitions[i].startchs.getCyl(),
+        disks[d].partitions[i].startchs.sec
+      );
+      // Fill boot option
+      b[oi].drive  = disks[d].id;
+      b[oi].letter = letter++;
+      b[oi].partition = &disks[d].partitions[i];
+      b[oi].fs = fsinfo;
+      oi++;
+    }
+  // Add terminating record
+  if (oi < MAXOPTION)
     memset(&b[oi], 0, sizeof(struct bootoption));
-}
-
-/****************************************************************************
-*
-* Prints string with BIOS int 0x10 function
-*
-****************************************************************************/
-
-void print(const char *str, const unsigned char a)
-{
-  unsigned char page = 0, row, col, attr;
-  biospage(page);
-  biosgetpos(page, &row, &col);
-  biosgetcha(page, &attr, NULL);
-  if (a)
-    attr = a;
-  biosputs(page, row, col, attr, strlen(str), str);
-};
-
-void bprintf(const char *fmt, ...)
-{
-  char stringBuffer[256];
-  va_list argptr;
-  va_start(argptr, fmt);
-  vsprintf(stringBuffer, fmt, argptr);
-  va_end(argptr);
-  print(stringBuffer);
 }
 
 /****************************************************************************
@@ -312,7 +336,7 @@ struct disk *findDisks()
 
 /****************************************************************************
 *
-* Loads partition table
+* Loads partition table from specified sector
 *
 ****************************************************************************/
 
@@ -330,7 +354,7 @@ int loadPartitions(
   unsigned short result	= biosdisk(_DISK_READ, drive, head, track, sector, 1, sectorBuf);
   if (result >> 8)
   {
-    print(diskerrormessage[result >> 8]);
+    bprint(diskerrormessage[result >> 8]);
     halt();
   }
 
@@ -341,7 +365,7 @@ int loadPartitions(
   // Checking signature
   if (p->signature != PRTTBL_SIGNATURE)
   {
-    print("Wrong signature");
+    bprint("Wrong signature. MBR damaged.\r\n");
     halt();
   }
 
@@ -366,20 +390,7 @@ int loadPartitions(
       break;
     // Copy partition table records
     default:
-#ifdef DEBUG
-      bprintf("%i %i 0x%02x %i/%i/%i %i/%i/%i\r\n",
-        n,
-        i,
-        p->partition[i].type,
-        p->partition[i].startchs.head,
-        p->partition[i].startchs.getCyl(),
-        p->partition[i].startchs.sec,
-        p->partition[i].endchs.head,
-        p->partition[i].endchs.getCyl(),
-        p->partition[i].endchs.sec
-      );
-#endif
-      memcpy(&table[n++], &p[i], sizeof(struct partentry));
+      memcpy(&table[n++], &p->partition[i], sizeof(struct partentry));
     }
   }
   // Fill last element with zeroes
@@ -389,7 +400,7 @@ int loadPartitions(
 
 /****************************************************************************
 *
-* Loads filesystem info
+* Loads filesystem info from specified sector
 *
 ****************************************************************************/
 
@@ -404,7 +415,7 @@ struct fsinfo *loadFSInfo(
   unsigned short result	= biosdisk(_DISK_READ, drive, head, track, sector, 1, sectorBuf);
   if (result >> 8)
   {
-    print(diskerrormessage[result >> 8]);
+    bprint(diskerrormessage[result >> 8]);
     halt();
   }
   struct fsinfo *fsinfo = (struct fsinfo *)malloc(sizeof(struct fsinfo));
@@ -413,8 +424,8 @@ struct fsinfo *loadFSInfo(
   memcpy(&fsinfo->serialNumber, sectorBuf + 0x27, 4);
   memcpy(&fsinfo->label,        sectorBuf + 0x2B, 11);
   memcpy(&fsinfo->FSType,       sectorBuf + 0x36, 8);
-  fsinfo->fsSPT   = *(unsigned short *)(sectorBuf + 0x18);
-  fsinfo->fsHeads = *(unsigned short *)(sectorBuf + 0x1A);
+//  fsinfo->fsSPT   = *(unsigned short *)(sectorBuf + 0x18);
+//  fsinfo->fsHeads = *(unsigned short *)(sectorBuf + 0x1A);
   return fsinfo;
 }
 
@@ -440,10 +451,17 @@ char *strip(char *str)
 
 void halt(void)
 {
+  bprintf("Boot failed. Returning to BIOS.\r\n");
   asm {
     int 0x18
   }
 }
+
+/****************************************************************************
+*
+* Loads specified boot sector in memory and executes boot procedure
+*
+****************************************************************************/
 
 void boot(
   const unsigned char  drive,
@@ -452,20 +470,15 @@ void boot(
   const unsigned char  sector
 )
 {
-#ifdef DEBUG
-  bprintf("D/H/C/S: %i/%i/%i/%i\r\n",
-    drive,
-    head,
-    track,
-    sector
-  );
-#endif
-
   unsigned char e;
   asm {
-    mov BX, 0x6800
+    xor AX, AX
+    mov ES, AX
+    mov DS, AX
+    mov BX, 0x7C00
     push BX
     mov AH, 0x02
+    mov AL, 0x01
     mov DX, track
     mov CL, 6
     shl DH, CL
@@ -485,7 +498,7 @@ Error:
     mov e, AH
   }
   if (e) {
-    print(diskerrormessage[e]);
+    bprint(diskerrormessage[e]);
     halt();
   }
   asm {
@@ -495,20 +508,42 @@ Error:
     // Hack jump instruction +0x0A to -0x02
     // To hang system instead of falling
     // to Non-system disk or disk error
-    //
-    // mov CL, 0xFE
-    // mov [BX+0xE2], CL
+#if defined(DEBUG) && defined(HANG_NO_SYSTEM)
+    mov CL, 0xFE
+    mov [BX+0xE2], CL
+#endif // DEBUG && HANG_NO_SYSTEM
 
-//    mov [BX+0x24], DL	// Hacking physical drive number
+    mov [BX+0x24], DL	// Hacking physical drive number
     mov AX, 0xAA55
     cmp [BX+0x01FE], AL
     jne NoSignature
-    jmp BX
+
+    DB 0x00EA 		// jmp far
+    DW 0x7C00, 0x0000	// 0000:7C00
   }
 NoJump:
-  print("No JMP instruction");
+  bprint("No JMP instruction.\r\n");
   halt();
 NoSignature:
-  print("Wrong signature");
+  bprint("Wrong signature.\r\n");
   halt();
 }
+
+#if defined(DEBUG)
+void dumpPartitionTable(struct partentry table[4])
+{
+  for (int i = 0; i < 4 && table[i].type; i++)
+    bprintf("%i %c 0x%02x %i/%i/%i %i/%i/%i\r\n",
+      i,
+      table[i].active & 0x80 ? '*' : ' ',
+      table[i].type,
+      table[i].startchs.head,
+      table[i].startchs.getCyl(),
+      table[i].startchs.sec,
+      table[i].endchs.head,
+      table[i].endchs.getCyl(),
+      table[i].endchs.sec
+    );
+
+}
+#endif

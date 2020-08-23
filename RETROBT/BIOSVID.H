@@ -20,53 +20,46 @@
 extern "C" {
 #endif /* __cplusplus */
 
-void		_Cdecl biossetmode(
-			unsigned char   mode
-		);
-void		_Cdecl biosgetmode(
-			unsigned char  *mode,
-                        unsigned char  *maxcol,
-                        unsigned char  *page
-		);
-void		_Cdecl biossetpos(
-                        unsigned char   pg,
-			unsigned char   row,
-                        unsigned char   col
-		);
-void		_Cdecl biosgetpos(
-			unsigned char  	pg,
-                        unsigned char  *row,
-                        unsigned char  *col
-		);
-void		_Cdecl biospage(
-			unsigned char  	pg
-		);
-void		_Cdecl biosgetcha(
-			unsigned char	pg,
-			unsigned char  *attr,
-                        unsigned char  *c
-		);
-void		_Cdecl biosputch(
-			unsigned char  	pg,
-                        char	  	c
-		);
-void		_Cdecl biosputcha(
-			unsigned char  	pg,
-                        unsigned char  	attr,
-                        char	  	c
-		);
-
-void		_Cdecl biosputchar(
-                        char	  	c
-		);
-void		_Cdecl biosputs(
-			unsigned char   pg,
-                        unsigned char   row,
-                        unsigned char   col,
-                        unsigned char   attr,
-                        unsigned short  len,
-			const char     *s
-		);
+void _Cdecl biossetmode(const unsigned char mode);
+void _Cdecl biosgetmode(
+  unsigned char *mode,
+  unsigned char *maxcol,
+  unsigned char *page
+  );
+void _Cdecl biossetpos(
+  const unsigned char pg,
+  const unsigned char row,
+  const unsigned char col
+  );
+void _Cdecl biosgetpos(
+  const unsigned char pg,
+  unsigned char *row,
+  unsigned char *col
+  );
+void _Cdecl biospage(const unsigned char pg);
+void _Cdecl biosgetcha(
+  const unsigned char pg,
+  unsigned char *attr,
+  unsigned char *c
+  );
+void _Cdecl biosputch(
+  const unsigned char pg,
+  const char c
+  );
+void _Cdecl biosputcha(
+  const unsigned char pg,
+  const unsigned char attr,
+  const char c
+  );
+void _Cdecl biosputchar(const char c);
+void _Cdecl biosputs(
+  const unsigned char pg,
+  const unsigned char row,
+  const unsigned char col,
+  const unsigned char attr,
+  const unsigned short len,
+  const char *s
+  );
 
 #ifdef __cplusplus
 }

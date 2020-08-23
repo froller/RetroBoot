@@ -1,3 +1,15 @@
+CXX_FLAGS_DEBUG=-v -k -N -y -R
+CXX_FLAGS_RELEASE=-v- -k- -N-
+CXX_FLAGS=-P -f- -b -u $(CXX_FLAGS_DEBUG)
+
+LINKER_FLAGS_DEBUG=/l /v
+LINKER_FLAGS_RELEASE=
+LINKER_FLAGS=$(LINKER_FLAGS_DEBUG) /Td /c /C
+
+DEFINES_DEBUG=-DDEBUG
+DEFINES_RELEASE=-DRELEASE
+DEFINES=$(DEFINES_DEBUG) -DVERSION=0.1
+
 all: stage1.bin stage15.bin
 
 stage1.bin: stage1.exe
@@ -9,28 +21,34 @@ stage1.exe: stage1.obj
 stage1.obj: stage1.asm
         tasm /q /t stage1.asm
 
-stage15.bin: stage15.com
-        del stage15.bin
-        copy stage15.com stage15.bin
+stage15.bin: stage15.exe
+	exe2bin stage15.exe stage15.bin
 
-stage15.com: stage15.obj biosvid.obj
-        tlink /t c0t.obj biosvid.obj stage15.obj,stage15.com,stage15.map,cs.lib maths.lib emu.lib
+stage15.exe: stage15.obj biosvid.obj bprintf.obj
+        tlink $(LINKER_FLAGS) c0t.obj biosvid.obj bprintf.obj stage15.obj,stage15.exe,,cs.lib
 
 stage15.obj: stage15.c
-        bcc -P -Os -mt -ostage15.obj -c stage15.c
+        bcc $(CXX_FLAGS) $(DEFINES) -ostage15.obj -c stage15.c
 
 biosvid.obj: biosvid.c biosvid.h
-        bcc -P -Os -mt -obiosvid.obj -c biosvid.c
+        bcc $(CXX_FLAGS) $(DEFINES) -obiosvid.obj -c biosvid.c
 
+bprintf.obj: bprintf.c bprintf.h biosvid.h
+	bcc $(CXX_FLAGS) $(DEFINES) -obprintf.obj -c bprintf.c
 clean:
-        del stage1.bin
-        del stage15.bin
-        del stage1.exe
-        del stage15.com
-	del stage15.exe
+        del *.bin
+	del *.exe
         del *.map
         del *.obj
-	del *.bak
 
 install: stage1.bin stage15.bin
         upmbr 129 stage1.bin stage15.bin
+
+nothing.bin: nothing.obj biosvid.obj
+	tlink $(LINKER_FLAGS) c0t.obj biosvid.obj nothing.obj,nothing.bin,,cs.lib
+
+nothing.obj: nothing.c
+	bcc $(CXX_FLAGS) -mt $(DEFINES) -onothing.obj -c nothing.c
+
+nothing: stage1.bin nothing.bin
+	upmbr 129 stage1.bin nothing.bin

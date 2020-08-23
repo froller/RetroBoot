@@ -159,7 +159,7 @@ LoadStage15	ENDP
 ;
 ; **************************************************************
 Drive	DB 0
-Msg	DB "RetroBoot v0.0", 0Dh, 0Ah, 0
+Msg	DB "RetroBoot v0.1", 0Dh, 0Ah, 0
 Loading	DB "Loading stage 1.5... ", 0
 Starting	DB "Starting stage 1.5... ", 0
 Loaded	DB "ok", 0Dh, 0Ah, 0
