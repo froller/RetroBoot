@@ -1,9 +1,9 @@
-#include "bprintf.h"
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <malloc.h>
 #include "biosvid.h"
+#include "bprintf.h"
 
 void _Cdecl bprinta(const char *str, const unsigned char attr)
 {

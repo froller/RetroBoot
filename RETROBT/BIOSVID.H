@@ -44,11 +44,13 @@ void _Cdecl biosgetcha(
   );
 void _Cdecl biosputch(
   const unsigned char pg,
+  const unsigned short n,
   const char c
   );
 void _Cdecl biosputcha(
   const unsigned char pg,
   const unsigned char attr,
+  const unsigned short n,
   const char c
   );
 void _Cdecl biosputchar(const char c);

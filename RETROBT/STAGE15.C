@@ -5,10 +5,13 @@
 #include "biosvid.h"
 #include "bprintf.h"
 #include "parttabl.h"
+#include "int13h.h"
 
+#define MENUWIDTH 64
 #define MAXDISK 8
 #define MAXOPTION 16
 #define SECTOR_SIZE 512
+#define HANG_NO_SYSTEM
 
 struct disk {
   unsigned char id;
@@ -33,7 +36,7 @@ struct fsinfo {
 
 struct bootoption {
   unsigned char drive;
-  char letter;
+  unsigned char partitionIndex;
   struct partentry *partition;
   struct fsinfo *fs;
 };
@@ -96,18 +99,13 @@ void boot(
   const unsigned short track,
   const unsigned char  sector
 );
-
+void installFakeMBR(const unsigned char drive, const unsigned char partition);
 
 struct bootoption options[MAXOPTION];
 
 int main(int /*argc*/, char ** /*argv*/)
 {
-#if defined(DEBUG)
-  bprint("debug");
-#else
-  bprint("ok");
-#endif
-  bprint("\r\n\n");
+  bprintf("ok (v%s)\r\n\n", VERSION);
 
   unsigned char row, col;
   biosgetpos(0, &row, &col);
@@ -139,7 +137,7 @@ int main(int /*argc*/, char ** /*argv*/)
     }
     if (s < 0)
       ++s;
-    if (!options[s].letter)
+    if (s == MAXOPTION || options[s].fs == NULL)
       --s;
   };
 }
@@ -152,7 +150,7 @@ int main(int /*argc*/, char ** /*argv*/)
 
 void showBootOptions(const struct bootoption *b, const unsigned char s)
 {
-  for (int i = 0; i < MAXOPTION && b[i].letter; ++i)
+  for (int i = 0; i < MAXOPTION && b[i].fs != NULL; ++i)
     printBootOption(&b[i], s == i);
 }
 
@@ -166,12 +164,15 @@ void printBootOption(const struct bootoption *b, const unsigned char s)
 {
   int bytes; // Length of printed boot option
   unsigned char attr = s ? 0x70 : 0x0F;	// Choose attribute
-  bytes = bprintaf("  %c: %-11s (HDD%u, %s, %lu MB)", attr,
-    b->letter, b->fs->label,
-    b->drive & 0x7F, strip(b->fs->FSType), b->partition->sizelba / 2000
+  bytes = bprintaf("  HDD%1u,%1u  %-11s %5lu MB  %-8s  %-8s", attr,
+    b->drive & 0x7F, b->partitionIndex,
+    b->fs->label,
+    b->partition->sizelba / 2000,
+    strip(b->fs->FSType),
+    strip(b->fs->OEMID)
   );
   // Spaces hightlighted
-  for (int i = bytes; i < 48; ++i)
+  for (int i = bytes; i < MENUWIDTH; ++i)
     bprinta(" ", attr);
   // Spaces to the end of line
   for (; i < 80; ++i)
@@ -186,6 +187,14 @@ void printBootOption(const struct bootoption *b, const unsigned char s)
 
 void useBootOption(const struct bootoption *b)
 {
+//#error Load MBR
+  asm {
+    mov BX, 0x4C
+    mov word ptr ES:[BX + 2], CS
+    mov word ptr ES:[BX], OFFSET int13h
+  }
+  fakeDrive = b->drive;
+  fakePartition = b->partitionIndex;
   boot(
     b->drive,
     b->partition->startchs.head,
@@ -203,45 +212,24 @@ void useBootOption(const struct bootoption *b)
 void loadBootOptions(struct bootoption *b)
 {
   struct disk *disks = findDisks();
-  char letter = 'C';
   char oi = 0;
 
   // Cycle through found physical disks
-  // to enumerate first partitions of each one
+  // to enumerate partitions of each one
   for (int d = 0; disks[d].drvtype; ++d)
   {
     // Load partition table
     disks[d].partitions
       = (struct partentry *)malloc(sizeof(struct partentry) * 16);
     loadPartitions(disks[d].partitions, disks[d].id, 0, 0, 1, 0);
+
 #if defined(DEBUG) && 0
     bprintf("Partitios on drive %d\r\n", disks[d].id);
     dumpPartitionTable(disks[d].partitions);
 #endif
 
-    // Load filesystem info of 1st partition
-    struct fsinfo *fsinfo = loadFSInfo(
-      disks[d].id,
-      disks[d].partitions[0].startchs.head,
-      disks[d].partitions[0].startchs.getCyl(),
-      disks[d].partitions[0].startchs.sec
-    );
-
-    // Fill boot option for 1st partition
-    // DOS enumerates first partitions of all available
-    // physical disks at first
-    // Then other partitions in order of appearance
-    b[oi].drive  = disks[d].id;
-    b[oi].letter = letter++;
-    b[oi].partition = &disks[d].partitions[0];
-    b[oi].fs = fsinfo;
-    oi++;
-  }
-  // Cycle through found physical disks again
-  // to enumerate rest partitions
-  for (d = 0; disks[d].drvtype; ++d)
-    // Cycle through partitions starting from 2nd
-    for (int i = 1; disks[d].partitions[i].type; ++i)
+    // Cycle through partitions
+    for (int i = 0; disks[d].partitions[i].type; ++i)
     {
       // Load filesystem info of i-th partition
       struct fsinfo *fsinfo = loadFSInfo(
@@ -252,11 +240,12 @@ void loadBootOptions(struct bootoption *b)
       );
       // Fill boot option
       b[oi].drive  = disks[d].id;
-      b[oi].letter = letter++;
+      b[oi].partitionIndex = i;
       b[oi].partition = &disks[d].partitions[i];
       b[oi].fs = fsinfo;
       oi++;
     }
+  }
   // Add terminating record
   if (oi < MAXOPTION)
     memset(&b[oi], 0, sizeof(struct bootoption));
@@ -316,8 +305,7 @@ Error:
 
 struct disk *findDisks()
 {
-  struct disk *disks
-    = (struct disk *)malloc(sizeof(struct disk));
+  struct disk *disks = (struct disk *)malloc(sizeof(struct disk));
   int disksFound = 0;
   for (int i = 0; i < MAXDISK; ++i)
     if (!diskGetConfig(0x80 + i, disks + disksFound))
@@ -325,7 +313,7 @@ struct disk *findDisks()
       disksFound++;
       disks = (struct disk *)realloc(
         disks,
-	sizeof(struct disk) * (disksFound + 1)
+        sizeof(struct disk) * (disksFound + 1)
       );
 
     }
@@ -351,7 +339,7 @@ int loadPartitions(
 {
   // Load first sector
   char sectorBuf[SECTOR_SIZE];
-  unsigned short result	= biosdisk(_DISK_READ, drive, head, track, sector, 1, sectorBuf);
+  unsigned short result = biosdisk(_DISK_READ, drive, head, track, sector, 1, sectorBuf);
   if (result >> 8)
   {
     bprint(diskerrormessage[result >> 8]);
@@ -380,12 +368,12 @@ int loadPartitions(
     // Recurse on extended partition
     case 0x05:
       n = loadPartitions(
-      	table,
-	drive,
-	p->partition[i].startchs.head,
-	p->partition[i].startchs.getCyl(),
-	p->partition[i].startchs.sec,
-	n
+        table,
+        drive,
+        p->partition[i].startchs.head,
+        p->partition[i].startchs.getCyl(),
+        p->partition[i].startchs.sec,
+        n
       );
       break;
     // Copy partition table records
@@ -412,7 +400,7 @@ struct fsinfo *loadFSInfo(
 )
 {
   char sectorBuf[SECTOR_SIZE];
-  unsigned short result	= biosdisk(_DISK_READ, drive, head, track, sector, 1, sectorBuf);
+  unsigned short result = biosdisk(_DISK_READ, drive, head, track, sector, 1, sectorBuf);
   if (result >> 8)
   {
     bprint(diskerrormessage[result >> 8]);
@@ -518,6 +506,15 @@ Error:
     cmp [BX+0x01FE], AL
     jne NoSignature
 
+    xor AX, AX
+    mov DS, AX
+    mov ES, AX
+    cli
+    mov SS, AX
+    mov AX, 0x7C00
+    mov SP, AX
+    sti
+
     DB 0x00EA 		// jmp far
     DW 0x7C00, 0x0000	// 0000:7C00
   }
@@ -527,6 +524,31 @@ NoJump:
 NoSignature:
   bprint("Wrong signature.\r\n");
   halt();
+}
+
+/****************************************************************************
+*
+* Installs INT 13h handler hijacking reading of MBR
+*
+****************************************************************************/
+
+void installFakeMBR(const unsigned char drive, const unsigned char partition)
+{
+  fakeDrive = drive;
+  fakePartition = partition;
+  // Set vector of Int 13h to _int13h
+  asm {
+    xor		AX, AX
+    push	AX
+    pop		ES
+    push	CS
+    pop		DS
+    mov		DI, 04Ch
+    mov		SI, OFFSET int13h
+    mov		CX, 2
+    rep
+    movsw
+  }
 }
 
 #if defined(DEBUG)

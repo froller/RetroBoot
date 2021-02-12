@@ -1,13 +1,14 @@
 	.MODEL TINY
 	.CODE
 BootAddr	EQU 07c00h
-RelocAddr	EQU 00600h
-RelocSeg	EQU 0060h
+RelocOffs	EQU 0h
+RelocSeg	EQU 0600h
 RelocSize	EQU 100h
-Stage15Seg	EQU 0140h
+Stage15Seg	EQU 2000h
+Stage15Offs	EQU 100h
 
-_Text	SEGMENT PUBLIC USE16
-	ASSUME CS:_Text,DS:_Text
+_TEXT	SEGMENT PUBLIC USE16
+	ASSUME CS:_TEXT,DS:_TEXT
 	ORG 0
 Start:  cli
 	xor AX, AX
@@ -18,20 +19,24 @@ Start:  cli
 	push AX
 	pop ES
 	sti
-; Релокация
+; Relcating myself
 	mov SI, BootAddr
-	mov DI, RelocAddr
+	mov AX, RelocSeg
+	mov ES, AX
+	mov DI, RelocOffs
 	mov CX, RelocSize
 	cld
 	repne
 	movsw
-; Старт на новом месте
+	xor AX, AX
+	mov ES, AX
+; Continuing execution of relocated code
 	DB 0EAh ; jmp far
 	DW OFFSET ReStart, RelocSeg
 
 ReStart:
 	cli
-	mov AX, 0060h
+	mov AX, RelocSeg
 	mov SS, AX
 	mov DS, AX
 	mov ES, AX
@@ -39,25 +44,25 @@ ReStart:
 	mov SP, AX
 	sti
 
-	; Сохранение загрузочного диска
+	; Saving the number of boot drive
 	mov [Drive], DL
 
-	; Приветствие
+	; Greeting
 	push BP
 	mov BP, OFFSET Msg
 	call Print
 	pop BP
 
-	; Загрузка Stage 1.5
+	; Loading Stage 1.5
 	call LoadStage15
 
-	; Печатаем Starting...
+	; Print "Starting..."
 	push BP
 	mov BP, OFFSET Starting
 	call Print
 	pop BP
 
-	; Запуск Stage 1.5
+	; Starting Stage 1.5
 	cli
 	mov AX, Stage15Seg
 	push AX
@@ -68,13 +73,13 @@ ReStart:
 	push AX
 	pop ES
 	sti
-; TODO проверить контрольную сумму
+; TODO Ensure cheksum is ok
 	DB 0EAh	; jmp far
-	DW 0100h, Stage15Seg
+	DW Stage15Offs, Stage15Seg
 
 ; **************************************************************
 ;
-; Печатает строку из ES:BP
+; Prints lint pointed by ES:BP
 ;
 ; **************************************************************
 Print	PROC
@@ -100,20 +105,20 @@ Print	ENDP
 
 ; **************************************************************
 ;
-; Загружает оставшийся код
+; Loads the rest of code
 ;
 ; **************************************************************
 LoadStage15	PROC
 	push BP
 	mov BP, SP
 
-	; Печатаем Loading...
+	; Print "Loading..."
 	push BP
 	mov BP, OFFSET Loading
 	call Print
 	pop BP
 
-	; Грузим 62 сектора по адресу 0140:0000
+	; Loading 62 sectors to 0140:0000
 	push ES
 	mov AX, Stage15Seg;
 	mov ES, AX
@@ -127,25 +132,25 @@ LoadStage15	PROC
 	int 13h
 	pop ES
 
-	; Сохраняем результат для потомков
+	; Saving error code
 	push AX
 
-	; Обработка ошибок загрузки
+	; Error handling
 	push BP
 	jc LoadFail
 
-	; Удачная загрузка
+	; Successful loading
 	mov BP, OFFSET Loaded
 	jmp PrintResult
 
-	; Неудачная загрузка
+	; Failed loading
 LoadFail:
 	mov BP, OFFSET Failed
 PrintResult:
 	call Print
 	pop BP
 
-	; Возвращаем ошибку загрузки в AX
+	; Returning error code to AX
 	pop AX
 
 	mov SP, BP
@@ -155,14 +160,14 @@ LoadStage15	ENDP
 
 ; **************************************************************
 ;
-; Данные
+; Data
 ;
 ; **************************************************************
 Drive	DB 0
-Msg	DB "RetroBoot v0.1", 0Dh, 0Ah, 0
+Msg	DB "RetroBoot v", VERSION, 0Dh, 0Ah, 0
 Loading	DB "Loading stage 1.5... ", 0
 Starting	DB "Starting stage 1.5... ", 0
 Loaded	DB "ok", 0Dh, 0Ah, 0
 Failed  DB "failed", 0Dh, 0Ah, 0
-_Text	ENDS
+_TEXT	ENDS
 	END

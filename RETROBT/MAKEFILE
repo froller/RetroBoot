@@ -1,14 +1,20 @@
+VERSION=0.2
+
 CXX_FLAGS_DEBUG=-v -k -N -y -R
 CXX_FLAGS_RELEASE=-v- -k- -N-
 CXX_FLAGS=-P -f- -b -u $(CXX_FLAGS_DEBUG)
 
 LINKER_FLAGS_DEBUG=/l /v
 LINKER_FLAGS_RELEASE=
-LINKER_FLAGS=$(LINKER_FLAGS_DEBUG) /Td /c /C
+LINKER_FLAGS=/Td /c /C $(LINKER_FLAGS_DEBUG)
+
+ASM_FLAGS_DEBUG=/zi
+ASM_FLAGS_RELEASE=
+ASM_FLAGS=/q /t /ml /z /dVERSION="$(VERSION)" $(ASM_FLAGS_DEBUG)
 
 DEFINES_DEBUG=-DDEBUG
 DEFINES_RELEASE=-DRELEASE
-DEFINES=$(DEFINES_DEBUG) -DVERSION=0.1
+DEFINES=-DVERSION="$(VERSION)" $(DEFINES_DEBUG)
 
 all: stage1.bin stage15.bin
 
@@ -16,39 +22,37 @@ stage1.bin: stage1.exe
         exe2bin stage1.exe stage1.bin
 
 stage1.exe: stage1.obj
-        tlink stage1.obj,stage1.exe,stage1.map
+        tlink $(LINKER_FLAGS) stage1.obj,stage1.exe,stage1.map
 
-stage1.obj: stage1.asm
-        tasm /q /t stage1.asm
+stage1.obj: stage1.asm Makefile
+        tasm $(ASM_FLAGS) stage1.asm,stage1.obj
 
 stage15.bin: stage15.exe
 	exe2bin stage15.exe stage15.bin
 
-stage15.exe: stage15.obj biosvid.obj bprintf.obj
-        tlink $(LINKER_FLAGS) c0t.obj biosvid.obj bprintf.obj stage15.obj,stage15.exe,,cs.lib
+stage15.exe: stage15.obj biosvid.obj bprintf.obj int13h.obj
+        tlink $(LINKER_FLAGS) c0t.obj biosvid.obj bprintf.obj int13h.obj stage15.obj,stage15.exe,,cs.lib
 
-stage15.obj: stage15.c
+stage15.obj: stage15.c biosvid.h bprintf.h int13h.h Makefile
         bcc $(CXX_FLAGS) $(DEFINES) -ostage15.obj -c stage15.c
 
-biosvid.obj: biosvid.c biosvid.h
+biosvid.obj: biosvid.c biosvid.h Makefile
         bcc $(CXX_FLAGS) $(DEFINES) -obiosvid.obj -c biosvid.c
 
-bprintf.obj: bprintf.c bprintf.h biosvid.h
+bprintf.obj: bprintf.c biosvid.h Makefile
 	bcc $(CXX_FLAGS) $(DEFINES) -obprintf.obj -c bprintf.c
+
+int13h.obj: int13h.asm Makefile
+	tasm $(ASM_FLAGS) int13h.asm,int13h.obj
+
 clean:
         del *.bin
 	del *.exe
         del *.map
         del *.obj
 
+distclean: clean
+	del *.bak
+
 install: stage1.bin stage15.bin
         upmbr 129 stage1.bin stage15.bin
-
-nothing.bin: nothing.obj biosvid.obj
-	tlink $(LINKER_FLAGS) c0t.obj biosvid.obj nothing.obj,nothing.bin,,cs.lib
-
-nothing.obj: nothing.c
-	bcc $(CXX_FLAGS) -mt $(DEFINES) -onothing.obj -c nothing.c
-
-nothing: stage1.bin nothing.bin
-	upmbr 129 stage1.bin nothing.bin
