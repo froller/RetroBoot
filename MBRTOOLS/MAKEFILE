@@ -1,37 +1,58 @@
-all: readmbr.com writembr.com upmbr.exe
+VERSION=1.0
+
+INCLUDEPATH=\BC\INCLUDE
+LIBPATH=\BC\LIB
+BINPATH=\TOOLS
+
+CXX_FLAGS_DEBUG=-v -k -N -y -R -M
+CXX_FLAGS_RELEASE=-v- -k- -N- -O2 -Z
+CXX_FLAGS=-mt -P -f- -b -u -1 -r- -d -I$(INCLUDEPATH) $(CXX_FLAGS_DEBUG)
+
+LINKER_FLAGS_DEBUG=/m /l /s /v
+LINKER_FLAGS_RELEASE=/x
+LINKER_FLAGS=/c /C /L$(LIBPATH) $(LINKER_FLAGS_DEBUG)
+
+DEFINES_DEBUG=-DDEBUG
+DEFINES_RELEASE=-DRELEASE
+DEFINES=-DSTANDALONE -DVERSION="$(VERSION)" $(DEFINES_DEBUG)
+
+
+all: readmbr.com writembr.com upmbr.com
 
 readmbr.com: readmbr.obj error.obj
-	tlink /t c0t.obj readmbr.obj error.obj,readmbr.com,readmbr.map,cs.lib
+        tlink /Tdc $(LINKER_FLAGS) c0t.obj readmbr.obj error.obj,readmbr.com,readmbr.map,cs.lib
 
 writembr.com: writembr.obj confirm.obj error.obj
-	tlink /t c0t.obj writembr.obj confirm.obj error.obj,writembr.com,writembr.map,cs.lib
+        tlink /Tdc $(LINKER_FLAGS) c0t.obj writembr.obj confirm.obj error.obj,writembr.com,writembr.map,cs.lib
 
-upmbr.exe: upmbr.obj confirm.obj error.obj
-	tlink c0t.obj upmbr.obj confirm.obj error.obj,upmbr.exe,upmbr.map,cs.lib
+upmbr.com: upmbr.obj confirm.obj error.obj
+        tlink /Tdc $(LINKER_FLAGS) c0t.obj upmbr.obj confirm.obj error.obj,upmbr.com,upmbr.map,cs.lib
 
 readmbr.obj: readmbr.c error.h
-	bcc -P -mt -oreadmbr.obj -c readmbr.c
+        bcc $(CXX_FLAGS) -oreadmbr.obj -c readmbr.c
 
 writembr.obj: writembr.c confirm.h error.h
-	bcc -P -mt -owritembr.obj -c writembr.c
+        bcc $(CXX_FLAGS) -owritembr.obj -c writembr.c
 
 upmbr.obj: upmbr.c partentry.h confirm.h error.h
-	bcc -P -ms -oupmbr.obj -c upmbr.c
+        bcc $(CXX_FLAGS) -oupmbr.obj -c upmbr.c
 
 confirm.obj: confirm.c confirm.h
-	bcc -P -mt -oconfirm.obj -c confirm.c
+        bcc $(CXX_FLAGS) -oconfirm.obj -c confirm.c
 
 error.obj: error.c error.h
-	bcc -P -mt -oerror.obj -c error.c
+        bcc $(CXX_FLAGS) -oerror.obj -c error.c
 
 clean:
-	del readmbr.com
-	del writembr.com
-	del upmbr.exe
-	del *.map
-	del *.obj
+        del *.map
+        del *.obj
 
-install: readmbr.com writembr.com upmbr.exe
-	copy readmbr.com C:\TOOLS
-	copy writembr.com C:\TOOLS
-	copy upmbr.exe C:\TOOLS
+distclean: clean
+        del readmbr.com
+        del writembr.com
+        del upmbr.com
+
+install: readmbr.com writembr.com upmbr.com
+        copy readmbr.com $(BINPATH)
+        copy writembr.com $(BINPATH)
+        copy upmbr.com $(BINPATH)
