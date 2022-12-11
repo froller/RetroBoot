@@ -1,12 +1,15 @@
 VERSION=0.2
 
+INCLUDEPATH=\BC\INCLUDE
+LIBPATH=\BC\LIB
+
 CXX_FLAGS_DEBUG=-v -k -N -y -R
 CXX_FLAGS_RELEASE=-v- -k- -N-
-CXX_FLAGS=-P -f- -b -u $(CXX_FLAGS_DEBUG)
+CXX_FLAGS=-P -f- -b -u -I$(INCLUDEPATH) $(CXX_FLAGS_DEBUG)
 
 LINKER_FLAGS_DEBUG=/l /v
 LINKER_FLAGS_RELEASE=
-LINKER_FLAGS=/Td /c /C $(LINKER_FLAGS_DEBUG)
+LINKER_FLAGS=/Td /c /C /L$(LIBPATH) $(LINKER_FLAGS_DEBUG)
 
 ASM_FLAGS_DEBUG=/zi
 ASM_FLAGS_RELEASE=
@@ -28,7 +31,7 @@ stage1.obj: stage1.asm Makefile
         tasm $(ASM_FLAGS) stage1.asm,stage1.obj
 
 stage15.bin: stage15.exe
-	exe2bin stage15.exe stage15.bin
+        exe2bin stage15.exe stage15.bin
 
 stage15.exe: stage15.obj biosvid.obj bprintf.obj int13h.obj
         tlink $(LINKER_FLAGS) c0t.obj biosvid.obj bprintf.obj int13h.obj stage15.obj,stage15.exe,,cs.lib
@@ -40,19 +43,20 @@ biosvid.obj: biosvid.c biosvid.h Makefile
         bcc $(CXX_FLAGS) $(DEFINES) -obiosvid.obj -c biosvid.c
 
 bprintf.obj: bprintf.c biosvid.h Makefile
-	bcc $(CXX_FLAGS) $(DEFINES) -obprintf.obj -c bprintf.c
+        bcc $(CXX_FLAGS) $(DEFINES) -obprintf.obj -c bprintf.c
 
 int13h.obj: int13h.asm Makefile
-	tasm $(ASM_FLAGS) int13h.asm,int13h.obj
+        tasm $(ASM_FLAGS) int13h.asm,int13h.obj
 
 clean:
         del *.bin
-	del *.exe
+        del *.exe
         del *.map
         del *.obj
+        del *.bak
 
 distclean: clean
-	del *.bak
+        del *.bak
 
 install: stage1.bin stage15.bin
         upmbr 129 stage1.bin stage15.bin
